@@ -1,2 +1,2 @@
-# Large files
-*.pt
+# Model weights
+bert_novel_model/

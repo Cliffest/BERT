@@ -7,7 +7,7 @@ from transformers import BertTokenizer, BertForMaskedLM, Trainer, TrainingArgume
 
 def train():
     # 加载BERT分词器
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
 
     # 读取txt文件
     print(f"Loading from {args.txt}")
@@ -25,7 +25,7 @@ def train():
     tokenized_datasets = dataset.map(tokenize_function, batched=True)
 
     # 加载BERT模型
-    model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+    model = BertForMaskedLM.from_pretrained('bert-base-chinese')
 
     # 设置训练参数
     training_args = TrainingArguments(

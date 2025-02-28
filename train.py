@@ -4,12 +4,14 @@ from transformers import BertTokenizer, BertForMaskedLM, AdamW
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-# 加载BERT分词器和模型
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+# Fine-tuning: 加载BERT分词器和模型
+tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
+model = BertForMaskedLM.from_pretrained('bert-base-chinese')
 
 # 读取小说文本
-with open("data/金庸-倚天屠龙记txt精校版_utf-8.txt", "r", encoding="utf-8") as file:
+txt_path = "data/金庸-倚天屠龙记txt精校版_utf-8.txt"
+print(f"Loading from {txt_path}")
+with open(txt_path, "r", encoding="utf-8") as file:
     text = file.read()
 
 # 将文本切分为小段落或句子
@@ -57,6 +59,7 @@ optimizer = AdamW(model.parameters(), lr=5e-5)
 
 # 将模型移动到 GPU（如果可用）
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device: {device}")
 model.to(device)
 
 # 定义训练过程
