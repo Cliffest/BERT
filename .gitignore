@@ -1,2 +1,4 @@
 # Model weights
 bert_novel_model/
+_old-files/
+outputs/*
