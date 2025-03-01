@@ -1,4 +1,5 @@
 # Model weights
+__pycache__/
 bert_novel_model/
 _old-files/
 outputs/*

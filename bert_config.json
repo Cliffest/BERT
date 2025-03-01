@@ -16,7 +16,7 @@
   "pooler_type": "first_token_transform", 
   "type_vocab_size": 2, 
   "----------": "Change the 'vocab_size' based on your vocab",
-  "vocab_size": 21138,
+  "vocab_size": 21502,
   
   "n_gpu": 1
 }

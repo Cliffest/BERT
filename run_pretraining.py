@@ -83,9 +83,9 @@ def create_examples(data_path, max_seq_length, masked_lm_prob, max_predictions_p
     max_num_tokens = max_seq_length - 2
     fr = open(data_path, "r")
     for (i, line) in tqdm(enumerate(fr), desc="Creating Example"):
-        print(f"i = {i}")  ####
+        #print(f"i = {i}")  ####
         tokens_a = line.strip("\n").split()[:max_num_tokens]
-        print(f"tokens_a = {tokens_a}, len(tokens_a) = {len(tokens_a)}")  ####
+        #print(f"tokens_a = {tokens_a}, len(tokens_a) = {len(tokens_a)}")  ####
         tokens = ["[CLS]"] + tokens_a + ["[SEP]"]
         segment_ids = [0 for _ in range(len(tokens_a) + 2)]
         # remove too short sample
@@ -100,7 +100,7 @@ def create_examples(data_path, max_seq_length, masked_lm_prob, max_predictions_p
             "masked_lm_labels": masked_lm_labels}
         examples.append(example)
     fr.close()
-    print("???")  ####
+    #print("???")  ####
     return examples
 
 
@@ -115,7 +115,7 @@ def convert_examples_to_features(examples, max_seq_length, tokenizer):
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
         masked_label_ids = tokenizer.convert_tokens_to_ids(masked_lm_labels)
 
-        input_array = np.zeros(max_seq_length, dtype=np.int)
+        input_array = np.zeros(max_seq_length, dtype=np.int64)  #### np.int -> np.int64
         input_array[:len(input_ids)] = input_ids
 
         mask_array = np.zeros(max_seq_length, dtype=np.bool)
@@ -124,7 +124,7 @@ def convert_examples_to_features(examples, max_seq_length, tokenizer):
         segment_array = np.zeros(max_seq_length, dtype=np.bool)
         segment_array[:len(segment_ids)] = segment_ids
 
-        lm_label_array = np.full(max_seq_length, dtype=np.int, fill_value=-1)
+        lm_label_array = np.full(max_seq_length, dtype=np.int64, fill_value=-1)  ####
         lm_label_array[masked_lm_positions] = masked_label_ids
 
         feature = InputFeatures(input_ids=input_array,
@@ -342,6 +342,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
