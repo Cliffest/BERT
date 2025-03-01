@@ -83,7 +83,9 @@ def create_examples(data_path, max_seq_length, masked_lm_prob, max_predictions_p
     max_num_tokens = max_seq_length - 2
     fr = open(data_path, "r")
     for (i, line) in tqdm(enumerate(fr), desc="Creating Example"):
+        print(f"i = {i}")  ####
         tokens_a = line.strip("\n").split()[:max_num_tokens]
+        print(f"tokens_a = {tokens_a}, len(tokens_a) = {len(tokens_a)}")  ####
         tokens = ["[CLS]"] + tokens_a + ["[SEP]"]
         segment_ids = [0 for _ in range(len(tokens_a) + 2)]
         # remove too short sample
@@ -98,6 +100,7 @@ def create_examples(data_path, max_seq_length, masked_lm_prob, max_predictions_p
             "masked_lm_labels": masked_lm_labels}
         examples.append(example)
     fr.close()
+    print("???")  ####
     return examples
 
 
@@ -180,11 +183,13 @@ def main():
              vocab_list.append(line.strip("\n"))
 
     if args.do_train:
+        print(f"Load train file from {args.pretrain_train_path}...")  ####
         train_examples = create_examples(data_path=args.pretrain_train_path,
                                          max_seq_length=args.max_seq_length,
                                          masked_lm_prob=args.masked_lm_prob,
                                          max_predictions_per_seq=args.max_predictions_per_seq,
                                          vocab_list=vocab_list)
+        print(f"Done. ({len(train_examples)} examples)")  ####
         num_train_optimization_steps = int(
             len(train_examples) / args.train_batch_size / args.gradient_accumulation_steps) * args.num_train_epochs
         if args.local_rank != -1:
@@ -247,6 +252,7 @@ def main():
         all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
 
         train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+        print(f"len(train_data) = {len(train_data)}")  ####
         if args.local_rank == -1:
             train_sampler = RandomSampler(train_data)
         else:

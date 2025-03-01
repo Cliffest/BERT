@@ -12,5 +12,7 @@ pip install torch torchvision torchaudio
 # gpu-CUDA 12.6
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 
+pip install scipy
 pip install scikit-learn
+pip install boto3
 ```
