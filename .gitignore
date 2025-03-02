@@ -1,5 +1,5 @@
 # Model weights
 __pycache__/
-bert_novel_model/
+my_cache/
 _old-files/
-outputs/*
+outputs*/*
