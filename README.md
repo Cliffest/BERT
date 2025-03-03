@@ -1,6 +1,14 @@
 # BERT on 《倚天屠龙记》
 
+## Results
+<div style="display:flex; justify-content:space-between;">
+  <img src="Results/result_at_epoch_0.png" alt="Image 1" style="width:250px;">
+  <img src="Results/result_at_epoch_100.png" alt="Image 2" style="width:250px;">
+  <img src="Results/result_at_epoch_540.png" alt="Image 3" style="width:250px;">
+</div>
+
 ## Requirements
+Require GPU.
 ```bash
 # conda env export > environment.yml
 conda env update -n bert -f environment.yml
@@ -19,5 +27,6 @@ python train.py --data_path data/倚天屠龙记_train_no-space.txt --output_dir
 
 ## Test
 ```bash
+# python train.py --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --epochs 101 --resume_from_epoch 100
 python test.py --model_dir outputs --n_epoch 100 --mask_token_ids 3
 ```
