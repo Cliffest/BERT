@@ -1,5 +1,11 @@
-# Model weights
+# macOS shit
+**/.DS_Store
+**/._*
+
+# Cache and others
 __pycache__/
 my_cache/
 _old-files/
+
+# Model weights
 outputs*/*

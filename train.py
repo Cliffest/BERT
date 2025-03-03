@@ -1,11 +1,13 @@
+import argparse
 import os
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
 from torch.utils.data import Dataset, DataLoader
-import random
 from transformers import BertTokenizer, BertForMaskedLM, BertConfig
-import argparse
+
 
 # 数据集类
 class ChineseTextDataset(Dataset):
@@ -67,17 +69,9 @@ class ModelConfig:
         self.max_length = 512  # 最大序列长度
         self.mask_prob = 0.15  # 掩码概率
 
-# 主程序
-if __name__ == "__main__":
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(description="Train a Chinese BERT model from scratch.")
-    parser.add_argument("--data_path", type=str, required=True, help="Path to the training data file.")
-    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the trained model and tokenizer.")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training.")
-    parser.add_argument("--resume_from_epoch", type=int, default=-1, help="Resume training from a specific epoch. Set to -1 to start from scratch.")
-    args = parser.parse_args()
 
+
+def main(args):
     # 初始化模型参数
     model_config = ModelConfig()
 
@@ -88,13 +82,15 @@ if __name__ == "__main__":
     # 加载预训练的中文分词器
     #tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
     cache_dir = "./my_cache"
-    vocab_file = os.path.join(cache_dir, "vocab.txt")
+    # 下载后需要手动改一次vocab_dir
+    vocab_dir = os.path.join(cache_dir, "models--bert-base-chinese", "snapshots", "c30a6ed22ab4564dc1e3b2ecbf6e766b0611a33f")
+    vocab_file = os.path.join(vocab_dir, "vocab.txt")
     if not os.path.exists(vocab_file):
         print("本地vocab文件不存在，将从 Hugging Face 下载...")
         tokenizer = BertTokenizer.from_pretrained("bert-base-chinese", cache_dir=cache_dir)
     else:
         print("本地vocab文件已存在，直接加载...")
-        tokenizer = BertTokenizer.from_pretrained(cache_dir)
+        tokenizer = BertTokenizer.from_pretrained(vocab_dir)
 
     # 从文件中加载文本数据
     with open(args.data_path, "r", encoding="utf-8") as f:
@@ -127,16 +123,19 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=model_config.learning_rate)
 
     # 检查是否从特定 epoch 继续训练
+    assert args.resume_from_epoch >= -1
     if args.resume_from_epoch >= 0:
         checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{args.resume_from_epoch}.pth")
         if os.path.exists(checkpoint_path):
             checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint["model_state_dict"])
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            print(f"Resuming training from epoch {args.resume_from_epoch + 1}...")
+            print(f"Resuming training from epoch {args.resume_from_epoch}...")
         else:
-            print(f"No checkpoint found for epoch {args.resume_from_epoch}. Starting training from scratch.")
-            args.resume_from_epoch = -1
+            #print(f"No checkpoint found for epoch {args.resume_from_epoch}. Starting training from scratch.")
+            #args.resume_from_epoch = -1
+            print(f"No checkpoint found for epoch {args.resume_from_epoch}.")
+            assert False
 
     start_epoch = args.resume_from_epoch + 1
 
@@ -165,24 +164,37 @@ if __name__ == "__main__":
 
             total_loss += loss.item()
 
-        print(f"Epoch {epoch + 1}/{args.epochs}, Loss: {total_loss / len(dataloader)}")
+        print(f"Epoch {epoch}/{args.epochs - 1}, Loss: {total_loss / len(dataloader)}")
 
-        # 每个 epoch 保存一次模型和优化器状态
-        checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{epoch}.pth")
-        torch.save({
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-        }, checkpoint_path)
+        # 每若干个 epoch 保存一次模型和优化器状态
+        if epoch % args.save_interval == 0 or epoch == args.epochs - 1:
+            checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{epoch}.pth")
+            print(f"Save checkpoint to {checkpoint_path}")
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+            }, checkpoint_path)
 
-        # 保存模型和分词器
-        os.makedirs(args.output_dir, exist_ok=True)
-        save_dir = os.path.join(args.output_dir, f"epoch_{epoch}")
-        os.makedirs(save_dir, exist_ok=True)
-        print(f"Save model and tokenizer to {save_dir}")
-        # 检查是否使用了 DataParallel
-        if isinstance(model, torch.nn.DataParallel):
-            model.module.save_pretrained(save_dir)  # 获取原始模型再保存
-        else:
-            model.save_pretrained(save_dir)
-        tokenizer.save_pretrained(save_dir)
+    # 保存模型和分词器
+    os.makedirs(args.output_dir, exist_ok=True)
+    save_dir = os.path.join(args.output_dir, f"epoch_{args.epochs - 1}")
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Save model and tokenizer to {save_dir}")
+    # 检查是否使用了 DataParallel
+    if isinstance(model, torch.nn.DataParallel):
+        model.module.save_pretrained(save_dir)  # 获取原始模型再保存
+    else:
+        model.save_pretrained(save_dir)
+    tokenizer.save_pretrained(save_dir)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a Chinese BERT model from scratch.")
+    parser.add_argument("--data_path", type=str, required=True, help="Path to the training data file.")
+    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the trained model and tokenizer.")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training.")
+    parser.add_argument("--save_interval", type=int, default=1, help="Every how many epochs should a checkpoint be saved.")
+    parser.add_argument("--resume_from_epoch", type=int, default=-1, help="Resume training from a specific epoch. Set to -1 to start from scratch.")
+    args = parser.parse_args()
+    main(args)
