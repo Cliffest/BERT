@@ -25,11 +25,11 @@ class ChineseTextDataset(Dataset):
         inputs = self.tokenizer(text, return_tensors="pt", max_length=self.max_length, padding="max_length", truncation=True)
         
         # 获取 input_ids 和 attention_mask
-        input_ids = inputs["input_ids"].squeeze(0)
+        input_ids = inputs["input_ids"].squeeze(0)  # 每个位置上的单词 ID
         attention_mask = inputs["attention_mask"].squeeze(0)
 
         # 创建标签
-        labels = input_ids.clone()
+        labels = input_ids.clone()  # [batch_size, max_length]
 
         # 随机掩码
         probability_matrix = torch.full(labels.shape, self.mask_prob)
@@ -143,6 +143,9 @@ def main(args):
     model.train()
     for epoch in range(start_epoch, args.epochs):
         total_loss = 0
+        total_predictions = 0
+        correct_predictions = 0
+
         for batch in dataloader:
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
@@ -150,12 +153,14 @@ def main(args):
 
             # 前向传播
             outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
-            #loss = outputs.loss
-            #print(loss.shape)  # 检查损失的形状
-            #print(loss)        # 打印损失值
-            #if loss.numel() > 1:
-            #    loss = loss.mean()
             loss = outputs.loss.mean()
+            logits = outputs.logits  # 获取模型的预测结果 [batch_size, max_length, vocab_size]
+
+            # 计算准确率
+            masked_indices = labels != -100  # 找到被掩盖的位置
+            _, predicted = torch.max(logits, dim=2)  # 获取预测的类别 predicted [batch_size, max_length]
+            correct_predictions += (predicted == labels).masked_fill(~masked_indices, 0).sum().item()
+            total_predictions += masked_indices.sum().item()
 
             # 反向传播
             optimizer.zero_grad()
@@ -164,7 +169,9 @@ def main(args):
 
             total_loss += loss.item()
 
-        print(f"Epoch {epoch}/{args.epochs - 1}, Loss: {total_loss / len(dataloader)}")
+        #print(f"Epoch {epoch}/{args.epochs - 1}, Loss: {total_loss / len(dataloader)}")
+        accuracy = correct_predictions / total_predictions
+        print(f"Epoch {epoch}/{args.epochs - 1}, Loss: {total_loss / len(dataloader)}, Accuracy: {accuracy:.4f}")
 
         # 每若干个 epoch 保存一次模型和优化器状态
         if epoch % args.save_interval == 0 or epoch == args.epochs - 1:
