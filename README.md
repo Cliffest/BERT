@@ -30,3 +30,11 @@ python train.py --data_path data/倚天屠龙记_train_no-space.txt --output_dir
 # python train.py --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --epochs 101 --resume_from_epoch 100
 python test.py --model_dir outputs --n_epoch 100 --mask_token_ids 3
 ```
+
+For example, commands to run the model that has been trained for 540 epochs.
+```bash
+# Get model files from checkpoint_epoch_540.pth
+python train.py --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --epochs 541 --resume_from_epoch 540
+# Test instance
+python test.py --model_dir outputs --n_epoch 540 --mask_token_ids 3 28
+```

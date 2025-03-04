@@ -174,6 +174,7 @@ def main(args):
         print(f"Epoch {epoch}/{args.epochs - 1}, Loss: {total_loss / len(dataloader)}, Accuracy: {accuracy:.4f}")
 
         # 每若干个 epoch 保存一次模型和优化器状态
+        os.makedirs(args.output_dir, exist_ok=True)
         if epoch % args.save_interval == 0 or epoch == args.epochs - 1:
             checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{epoch}.pth")
             print(f"Save checkpoint to {checkpoint_path}")
@@ -184,7 +185,6 @@ def main(args):
             }, checkpoint_path)
 
     # 保存模型和分词器
-    os.makedirs(args.output_dir, exist_ok=True)
     save_dir = os.path.join(args.output_dir, f"epoch_{args.epochs - 1}")
     os.makedirs(save_dir, exist_ok=True)
     print(f"Save model and tokenizer to {save_dir}")
