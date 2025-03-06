@@ -78,6 +78,7 @@ def main(args):
     for idx, token in zip(mask_token_indices, predicted_tokens):
         predicted_input_ids[0, idx] = tokenizer.convert_tokens_to_ids(token)
     predicted_sentence = tokenizer.decode(predicted_input_ids[0], skip_special_tokens=True)
+    predicted_sentence = predicted_sentence.replace(" ", "")
 
     print(f"\n原始句子: {test_text}")
     print(f"掩码后的句子: {masked_sentence}")

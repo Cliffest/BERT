@@ -8,4 +8,7 @@ my_cache/
 _old-files/
 
 # Model weights
-outputs*/*
+#outputs*/*
+
+# Push errors
+#data/*.txt
