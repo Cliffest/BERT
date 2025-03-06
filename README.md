@@ -7,6 +7,16 @@
   <img src="Results/result_at_epoch_540.png" alt="Image 3" style="width:250px;">
 </div>
 
+## Download
+Only codes.
+```
+git clone https://github.com/Cliffest/BERT.git
+```
+Codes and model weights (require Git LFS).
+```
+git lfs clone https://github.com/Cliffest/BERT.git
+```
+
 ## Requirements
 Require GPU.
 ```bash
