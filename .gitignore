@@ -6,6 +6,7 @@
 __pycache__/
 my_cache/
 _old-files/
+tmp/
 
 # Model weights
 #outputs*/*

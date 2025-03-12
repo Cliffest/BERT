@@ -2,7 +2,7 @@ import argparse
 import os
 import torch
 
-from transformers import BertTokenizerFast, BertForMaskedLM
+from transformers import BertTokenizer, BertForMaskedLM
 
 
 def main(args):
@@ -15,7 +15,7 @@ def main(args):
         assert (os.path.exists(os.path.join(model_path, "vocab.txt")) and 
                 os.path.exists(os.path.join(model_path, "model.safetensors")))
         print(f"Load from {model_path}")
-        tokenizer = BertTokenizerFast.from_pretrained(model_path)
+        tokenizer = BertTokenizer.from_pretrained(model_path)
         model = BertForMaskedLM.from_pretrained(model_path)
     else:  # Pretrained model
         print("Load from Hugging Face")

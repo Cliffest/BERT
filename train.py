@@ -1,15 +1,34 @@
 import argparse
 import os
-import random
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 
+from enum import Enum, auto
+from torch.nn import DataParallel as DP
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DistributedSampler  # DDP
 from transformers import BertTokenizer, BertForMaskedLM, BertConfig
 
 
-# 数据集类
+class ModelConfig:
+    def __init__(self):
+        self.hidden_size = 128        # 隐藏层大小
+        self.num_hidden_layers = 2    # 隐藏层数量
+        self.num_attention_heads = 2  # 注意力头数量
+        self.intermediate_size = 256  # 中间层大小
+        self.learning_rate = 1e-5     # 学习率
+        self.max_length = 512         # 最大序列长度
+        self.mask_prob = 0.15         # 掩码概率
+
+class Mode(Enum):
+    CPU = auto()
+    one_GPU = auto()
+    DP = auto()
+    DDP = auto()
+
 class ChineseTextDataset(Dataset):
     def __init__(self, texts, tokenizer, max_length=512, mask_prob=0.15):
         self.texts = texts
@@ -58,28 +77,28 @@ class ChineseTextDataset(Dataset):
             "labels": labels
         }
 
-# 模型参数配置类
-class ModelConfig:
-    def __init__(self):
-        self.hidden_size = 128  # 隐藏层大小
-        self.num_hidden_layers = 2  # 隐藏层数量
-        self.num_attention_heads = 2  # 注意力头数量
-        self.intermediate_size = 256  # 中间层大小
-        self.learning_rate = 1e-5  # 学习率
-        self.max_length = 512  # 最大序列长度
-        self.mask_prob = 0.15  # 掩码概率
 
+def set_mode(mode):
+    assert mode in ["CPU", "1_GPU", "DP", "DDP"]
+    return Mode.CPU if mode == "CPU" else (
+           Mode.one_GPU if mode == "1_GPU" else (
+           Mode.DP if mode == "DP" else (
+           Mode.DDP if mode == "DDP" else None)))
 
+def init_distributed_mode():  # DDP, 初始化分布式环境
+    assert all(variable in os.environ for variable in ["WORLD_SIZE",    # nnodes * nproc-per-node
+                                                       "RANK",          # 0~(WORLD_SIZE-1), torchrun 自动设置
+                                                       "MASTER_ADDR",   # master_addr
+                                                       "MASTER_PORT"])  # master_port
+    # 设置当前进程的 GPU
+    torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))  # torchrun 自动设置 LOCAL_RANK
+    # 从环境变量中读取
+    print(f"Initializing distributed training on local_rank {int(os.environ['LOCAL_RANK'])}, global_rank {int(os.environ['RANK'])}, world_size {int(os.environ['WORLD_SIZE'])}")
+    # 初始化分布式环境
+    dist.init_process_group(backend="nccl", init_method="env://")
+    print("Distributed training initialized successfully.")
 
-def main(args):
-    # 初始化模型参数
-    model_config = ModelConfig()
-
-    # 配置设备
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    # 加载预训练的中文分词器
+def load_tokenizer():
     #tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
     cache_dir = "./my_cache"
     # 下载后需要手动改一次vocab_dir
@@ -91,6 +110,57 @@ def main(args):
     else:
         print("本地vocab文件已存在，直接加载...")
         tokenizer = BertTokenizer.from_pretrained(vocab_dir)
+    return tokenizer
+
+def get_model(model):
+    return model.module if isinstance(model, DP) or isinstance(model, DDP) else model
+
+def load_from_epoch(args, model, optimizer, device):
+    assert args.resume_from_epoch >= 0
+    if args.resume_from_epoch > 0:
+        checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{args.resume_from_epoch}.pth")
+        print(f"Resume training from {checkpoint_path}...")
+        assert os.path.exists(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        if not (args.mode is Mode.DDP) or dist.get_rank() == 0:  # 若采用 DDP, 只在主进程（rank 0）载入模型
+            get_model(model).load_state_dict(checkpoint['model_state_dict'])  # 处理是否使用了 DP/DDP
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    return args.resume_from_epoch + 1, model, optimizer
+
+def save_checkpoint(args, epoch, model, optimizer):
+    os.makedirs(args.output_dir, exist_ok=True)
+    # 保存断点
+    checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{epoch}.pth")
+    torch.save({
+        "epoch": epoch,
+        "model_state_dict": get_model(model).state_dict(),  # 处理是否使用了 DP/DDP
+        "optimizer_state_dict": optimizer.state_dict(),
+    }, checkpoint_path)
+    print(f"Save checkpoint to {checkpoint_path}")
+
+def save_model(args, model, tokenizer):
+    os.makedirs(args.output_dir, exist_ok=True)
+    save_dir = os.path.join(args.output_dir, f"epoch_{args.epochs}")
+    os.makedirs(save_dir, exist_ok=True)
+    get_model(model).save_pretrained(save_dir)  # 处理是否使用了 DP/DDP
+    tokenizer.save_pretrained(save_dir)
+    print(f"Save model and tokenizer to {save_dir}")
+
+
+
+def main(args):
+    args.mode = set_mode(args.mode)
+    assert torch.cuda.is_available() if args.mode in [Mode.one_GPU, Mode.DP, Mode.DDP] else True
+
+    # 初始化分布式环境
+    if args.mode is Mode.DDP:  # DDP
+        init_distributed_mode()
+
+    # 加载预训练的中文分词器
+    tokenizer = load_tokenizer()
+
+    # 初始化模型参数
+    model_config = ModelConfig()
 
     # 从文件中加载文本数据
     with open(args.data_path, "r", encoding="utf-8") as f:
@@ -100,7 +170,11 @@ def main(args):
     dataset = ChineseTextDataset(
         texts, tokenizer, max_length=model_config.max_length, mask_prob=model_config.mask_prob
     )
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    if args.mode in [Mode.CPU, Mode.one_GPU, Mode.DP]:  # 不启用分布式训练
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    else:  # DDP
+        data_sampler = DistributedSampler(dataset)
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, sampler=data_sampler)
 
     # 初始化模型
     config = BertConfig(
@@ -112,44 +186,45 @@ def main(args):
     )
     model = BertForMaskedLM(config)
 
-    # 多卡训练
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs")
-        model = nn.DataParallel(model)
+    # 配置设备
+    device = torch.device("cpu" if args.mode is Mode.CPU else "cuda")
+    print(f"Using device: {device}")
 
     model.to(device)
+
+    # 分布式训练
+    if args.mode in [Mode.DP, Mode.DDP]:
+        print(f"Using {torch.cuda.device_count()} GPU"+("s" if torch.cuda.device_count() > 1 else ""))
+        if args.mode is Mode.DP:  # DP
+            model = DP(model)
+        else:  # DDP
+            model = DDP(model, device_ids=[torch.cuda.current_device()])
 
     # 定义优化器
     optimizer = optim.Adam(model.parameters(), lr=model_config.learning_rate)
 
     # 检查是否从特定 epoch 继续训练
-    assert args.resume_from_epoch >= -1
-    if args.resume_from_epoch >= 0:
-        checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{args.resume_from_epoch}.pth")
-        if os.path.exists(checkpoint_path):
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-            model.load_state_dict(checkpoint["model_state_dict"])
-            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            print(f"Resuming training from epoch {args.resume_from_epoch}...")
-        else:
-            #print(f"No checkpoint found for epoch {args.resume_from_epoch}. Starting training from scratch.")
-            #args.resume_from_epoch = -1
-            print(f"No checkpoint found for epoch {args.resume_from_epoch}.")
-            assert False
-
-    start_epoch = args.resume_from_epoch + 1
-
+    start_epoch, model, optimizer = load_from_epoch(args, model, optimizer, device)
+    
     # 训练模型
     model.train()
-    for epoch in range(start_epoch, args.epochs):
+
+    for epoch in range(start_epoch, args.epochs + 1):
+        print(f"Epoch {epoch}/{args.epochs}")
+        
         total_loss = 0
         total_predictions = 0
         correct_predictions = 0
+
+        if args.mode is Mode.DDP:
+            data_sampler.set_epoch(epoch)  # DDP
 
         for batch in dataloader:
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
+
+            optimizer.zero_grad()
 
             # 前向传播
             outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
@@ -163,45 +238,33 @@ def main(args):
             total_predictions += masked_indices.sum().item()
 
             # 反向传播
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             total_loss += loss.item()
 
-        #print(f"Epoch {epoch}/{args.epochs - 1}, Loss: {total_loss / len(dataloader)}")
         accuracy = correct_predictions / total_predictions
-        print(f"Epoch {epoch}/{args.epochs - 1}, Loss: {total_loss / len(dataloader)}, Accuracy: {accuracy:.4f}")
+        print(f"    Loss: {total_loss / len(dataloader)}, Accuracy: {(100*accuracy):.2f} %")
 
-        # 每若干个 epoch 保存一次模型和优化器状态
-        os.makedirs(args.output_dir, exist_ok=True)
-        if epoch % args.save_interval == 0 or epoch == args.epochs - 1:
-            checkpoint_path = os.path.join(args.output_dir, f"checkpoint_epoch_{epoch}.pth")
-            print(f"Save checkpoint to {checkpoint_path}")
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }, checkpoint_path)
+        if not (args.mode is Mode.DDP) or dist.get_rank() == 0:  # 若采用 DDP, 只在主进程（rank 0）保存模型
+            # 每若干个 epoch 保存一次模型和优化器状态
+            if epoch == 1 or epoch % args.save_interval == 0 or epoch == args.epochs:
+                save_checkpoint(args, epoch, model, optimizer)
 
-    # 保存模型和分词器
-    save_dir = os.path.join(args.output_dir, f"epoch_{args.epochs - 1}")
-    os.makedirs(save_dir, exist_ok=True)
-    print(f"Save model and tokenizer to {save_dir}")
-    # 检查是否使用了 DataParallel
-    if isinstance(model, torch.nn.DataParallel):
-        model.module.save_pretrained(save_dir)  # 获取原始模型再保存
-    else:
-        model.save_pretrained(save_dir)
-    tokenizer.save_pretrained(save_dir)
+    if not (args.mode is Mode.DDP) or dist.get_rank() == 0:  # 若采用 DDP, 只在主进程（rank 0）保存模型
+        # 保存模型和分词器
+        save_model(args, model, tokenizer)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a Chinese BERT model from scratch.")
+    parser.add_argument('--mode', type=str, default="1_GPU", help="Mode in [CPU, 1_GPU, DP, DDP].")
+    
     parser.add_argument("--data_path", type=str, required=True, help="Path to the training data file.")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the trained model and tokenizer.")
+    
     parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training.")
     parser.add_argument("--save_interval", type=int, default=1, help="Every how many epochs should a checkpoint be saved.")
-    parser.add_argument("--resume_from_epoch", type=int, default=-1, help="Resume training from a specific epoch. Set to -1 to start from scratch.")
+    parser.add_argument("--resume_from_epoch", type=int, default=0, help="Resume training from a specific epoch. Set to 0 to start from scratch.")
     args = parser.parse_args()
     main(args)
