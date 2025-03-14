@@ -82,7 +82,7 @@ def main(args):
 
     print(f"\n原始句子: {test_text}")
     print(f"掩码后的句子: {masked_sentence}")
-    print(f"预测后的句子: {predicted_sentence}")
+    print(f"预测句子: {predicted_sentence}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
