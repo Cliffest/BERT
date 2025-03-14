@@ -101,7 +101,7 @@ def init_distributed_mode():  # DDP, 初始化分布式环境
 def load_tokenizer():
     #tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
     cache_dir = "./my_cache"
-    # 下载后需要手动改一次vocab_dir
+    # 下载后可能需要手动改一次vocab_dir
     vocab_dir = os.path.join(cache_dir, "models--bert-base-chinese", "snapshots", "c30a6ed22ab4564dc1e3b2ecbf6e766b0611a33f")
     vocab_file = os.path.join(vocab_dir, "vocab.txt")
     if not os.path.exists(vocab_file):
@@ -122,8 +122,7 @@ def load_from_epoch(args, model, optimizer, device):
         print(f"Resume training from {checkpoint_path}...")
         assert os.path.exists(checkpoint_path)
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        if not (args.mode is Mode.DDP) or dist.get_rank() == 0:  # 若采用 DDP, 只在主进程（rank 0）载入模型
-            get_model(model).load_state_dict(checkpoint['model_state_dict'])  # 处理是否使用了 DP/DDP
+        get_model(model).load_state_dict(checkpoint['model_state_dict'])  # 处理是否使用了 DP/DDP
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     return args.resume_from_epoch + 1, model, optimizer
 

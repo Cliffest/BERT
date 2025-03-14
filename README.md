@@ -23,6 +23,9 @@ git lfs clone https://github.com/Cliffest/BERT.git
 # conda env export > environment.yml
 conda env update -n bert -f environment.yml
 conda activate bert
+# If torch==2.6.0+cu126 failed, download pytorch from https://pytorch.org
+#    If training on GPU, run `pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126` (Linux)
+#    If only training on CPU, run `pip3 install torch torchvision torchaudio` (macOS)
 ```
 
 ## Train
@@ -37,22 +40,22 @@ Train model on CPU.
 python train.py --mode CPU --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 32
 ```
 
-DataParallel (DP) train model with multi-GPU on single machine.
+DataParallel (DP) train model with multi-GPUs on single machine.
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 python train.py --mode DP --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 64
 ```
 
-DistributedDataParallel (DDP) train model with multi-GPU on single machine.
+DistributedDataParallel (DDP) train model with multi-GPUs on single machine.
 ```bash
-CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc-per-node=2 --nnodes=1 --node_rank=0 --master_addr=127.0.0.1 --master_port=12121 train.py --mode DDP --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 32
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc-per-node=2 --nnodes=1 --node_rank=0 --master_addr=127.0.0.1 --master_port=1234 train.py --mode DDP --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 32
 ```
 
-DistributedDataParallel (DDP) train model on multi-machines.
+Train model on multi-machines. Note that make sure the master port on all machines is open (check with `sudo ufw status verbose`).
 ```bash
 # Machine 0 (main node)
-torchrun --nproc-per-node=2 --nnodes=2 --node_rank=0 --master_addr="IP of main node" --master_port=12121 train.py --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 64
+torchrun --nproc-per-node=2 --nnodes=2 --node_rank=0 --master_addr="IP of main node" --master_port=1234 train.py --mode 1_GPU/DP --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 32
 # Machine 1
-torchrun --nproc-per-node=2 --nnodes=2 --node_rank=1 --master_addr="IP of main node" --master_port=12121 train.py --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 64
+torchrun --nproc-per-node=2 --nnodes=2 --node_rank=1 --master_addr="IP of main node" --master_port=1234 train.py --mode 1_GPU/DP --data_path data/倚天屠龙记_train_no-space.txt --output_dir outputs --batch_size 32
 ```
 
 Save model at epoch $N$.
